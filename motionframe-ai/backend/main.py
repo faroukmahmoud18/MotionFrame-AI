@@ -31,6 +31,9 @@ class VideoRequest(BaseModel):
     prompt: str
     duration: int
 
+from sse_starlette.sse import EventSourceResponse
+import asyncio
+
 @app.post("/api/generate-video")
 async def generate_video(
     image: UploadFile = File(...),
@@ -53,6 +56,50 @@ async def generate_video(
         video_url = f"/storage/videos/{os.path.basename(video_path)}"
 
         return {"video_url": video_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def video_generator(image_path: str, prompt: str, duration: int):
+    """
+    Generator function that yields progress updates during video generation.
+    """
+    video_filename = f"{uuid.uuid4()}.mp4"
+    video_path = os.path.join("../storage/videos", video_filename)
+
+    def progress_callback(step, total_steps):
+        progress = int((step / total_steps) * 100)
+        asyncio.run(queue.put(f"data: {progress}\\n\\n"))
+
+    queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(None, generate_animation, image_path, prompt, duration, video_path, progress_callback)
+
+    while True:
+        progress = await queue.get()
+        yield progress
+        if "100" in progress:
+            break
+
+    yield f"data: {{\"video_url\": \"/storage/videos/{video_filename}\"}}\\n\\n"
+
+@app.post("/api/generate-video-sse")
+async def generate_video_sse(
+    image: UploadFile = File(...),
+    prompt: str = Form(...),
+    duration: int = Form(...)
+):
+    try:
+        # Save the uploaded image
+        image_ext = os.path.splitext(image.filename)[1]
+        if image_ext.lower() not in [".jpg", ".jpeg", ".png"]:
+            raise HTTPException(status_code=400, detail="Invalid image format. Only JPG and PNG are allowed.")
+
+        image_filename = f"{uuid.uuid4()}{image_ext}"
+        image_path = os.path.join("../storage/uploads", image_filename)
+        with open(image_path, "wb") as f:
+            f.write(await image.read())
+
+        return EventSourceResponse(video_generator(image_path, prompt, duration))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

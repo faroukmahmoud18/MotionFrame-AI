@@ -4,7 +4,7 @@ from diffusers import MotionAdapter, AnimateDiffPipeline
 from diffusers.utils import export_to_video
 from PIL import Image
 
-def generate_animation(image_path: str, prompt: str, duration: int, output_path: str):
+def generate_animation(image_path: str, prompt: str, duration: int, output_path: str, progress_callback=None):
     """
     Generates a video animation from a static image using AnimateDiff.
 
@@ -13,6 +13,7 @@ def generate_animation(image_path: str, prompt: str, duration: int, output_path:
         prompt (str): The camera motion prompt.
         duration (int): The duration of the video in seconds.
         output_path (str): The path to save the generated video.
+        progress_callback (function): A function to call with progress updates.
     """
     # Load the motion adapter and pipeline
     adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
@@ -33,7 +34,9 @@ def generate_animation(image_path: str, prompt: str, duration: int, output_path:
         num_frames=num_frames,
         guidance_scale=7.5,
         num_inference_steps=25,
-        image=input_image
+        image=input_image,
+        callback=progress_callback,
+        callback_steps=1,
     )
     frames = output.frames[0]
 
