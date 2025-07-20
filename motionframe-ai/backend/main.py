@@ -82,14 +82,9 @@ async def video_generator(image_path: str, prompt: str, duration: int):
 
     yield f"data: {{\"video_url\": \"/storage/videos/{video_filename}\"}}\\n\\n"
 
-@app.post("/api/generate-video-sse")
-async def generate_video_sse(
-    image: UploadFile = File(...),
-    prompt: str = Form(...),
-    duration: int = Form(...)
-):
+@app.post("/api/upload-image")
+async def upload_image(image: UploadFile = File(...)):
     try:
-        # Save the uploaded image
         image_ext = os.path.splitext(image.filename)[1]
         if image_ext.lower() not in [".jpg", ".jpeg", ".png"]:
             raise HTTPException(status_code=400, detail="Invalid image format. Only JPG and PNG are allowed.")
@@ -98,6 +93,21 @@ async def generate_video_sse(
         image_path = os.path.join("../storage/uploads", image_filename)
         with open(image_path, "wb") as f:
             f.write(await image.read())
+
+        return {"filename": image_filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/generate-video-sse")
+async def generate_video_sse(
+    image_filename: str,
+    prompt: str,
+    duration: int
+):
+    try:
+        image_path = os.path.join("../storage/uploads", image_filename)
+        if not os.path.exists(image_path):
+            raise HTTPException(status_code=404, detail="Image not found.")
 
         return EventSourceResponse(video_generator(image_path, prompt, duration))
     except Exception as e:

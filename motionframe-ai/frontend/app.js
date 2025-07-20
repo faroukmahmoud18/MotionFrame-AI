@@ -14,31 +14,52 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
     progressBar.style.width = '0%';
     progressBar.textContent = '0%';
 
-    const eventSource = new EventSource('/api/generate-video-sse', {
-        method: 'POST',
-        body: formData,
-    });
+    try {
+        // 1. Upload the image
+        const uploadResponse = await fetch('/api/upload-image', {
+            method: 'POST',
+            body: formData,
+        });
 
-    eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
+        if (!uploadResponse.ok) {
+            throw new Error('Failed to upload image');
+        }
 
-        if (data.video_url) {
-            video.src = data.video_url;
-            downloadBtn.href = data.video_url;
-            videoContainer.classList.remove('hidden');
+        const uploadData = await uploadResponse.json();
+        const imageFilename = uploadData.filename;
+
+        // 2. Start the SSE connection
+        const prompt = formData.get('prompt');
+        const duration = formData.get('duration');
+        const eventSource = new EventSource(`/api/generate-video-sse?image_filename=${imageFilename}&prompt=${prompt}&duration=${duration}`);
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.video_url) {
+                    video.src = data.video_url;
+                    downloadBtn.href = data.video_url;
+                    videoContainer.classList.remove('hidden');
+                    loading.classList.add('hidden');
+                    eventSource.close();
+                }
+            } catch (e) {
+                const progress = parseInt(event.data);
+                progressBar.style.width = `${progress}%`;
+                progressBar.textContent = `${progress}%`;
+            }
+        };
+
+        eventSource.onerror = (error) => {
+            console.error('EventSource failed:', error);
+            alert('An error occurred while generating the video. Please try again.');
             loading.classList.add('hidden');
             eventSource.close();
-        } else {
-            const progress = parseInt(data);
-            progressBar.style.width = `${progress}%`;
-            progressBar.textContent = `${progress}%`;
-        }
-    };
-
-    eventSource.onerror = (error) => {
-        console.error('EventSource failed:', error);
-        alert('An error occurred while generating the video. Please try again.');
+        };
+    } catch (error) {
+        console.error(error);
+        alert('An error occurred. Please try again.');
         loading.classList.add('hidden');
-        eventSource.close();
-    };
+    }
 });
