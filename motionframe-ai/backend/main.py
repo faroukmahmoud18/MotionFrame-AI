@@ -24,7 +24,7 @@ def generate_video_from_image(image_path: str, prompt: str, duration: int) -> st
 app = FastAPI()
 
 # Mount the frontend and storage directories
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="frontend")
+app.mount("/frontend", StaticFiles(directory="../frontend", html=True), name="frontend")
 app.mount("/storage", StaticFiles(directory="../storage"), name="storage")
 
 class VideoRequest(BaseModel):
@@ -60,18 +60,16 @@ async def generate_video(
         raise HTTPException(status_code=500, detail=str(e))
 
 async def video_generator(image_path: str, prompt: str, duration: int):
-    """
-    Generator function that yields progress updates during video generation.
-    """
     video_filename = f"{uuid.uuid4()}.mp4"
     video_path = os.path.join("../storage/videos", video_filename)
 
-    def progress_callback(step, total_steps):
-        progress = int((step / total_steps) * 100)
-        asyncio.run(queue.put(f"data: {progress}\\n\\n"))
-
     queue = asyncio.Queue()
     loop = asyncio.get_event_loop()
+
+    def progress_callback(step, timestep, latents=None):
+        progress = int((step / 25) * 100)
+        loop.call_soon_threadsafe(queue.put_nowait, f"data: {progress}\n\n")
+
     loop.run_in_executor(None, generate_animation, image_path, prompt, duration, video_path, progress_callback)
 
     while True:
@@ -80,7 +78,7 @@ async def video_generator(image_path: str, prompt: str, duration: int):
         if "100" in progress:
             break
 
-    yield f"data: {{\"video_url\": \"/storage/videos/{video_filename}\"}}\\n\\n"
+    yield f"data: {{\"video_url\": \"/storage/videos/{video_filename}\"}}\n\n"
 
 @app.post("/api/upload-image")
 async def upload_image(image: UploadFile = File(...)):

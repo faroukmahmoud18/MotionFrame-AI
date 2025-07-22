@@ -6,28 +6,31 @@ from PIL import Image
 
 def generate_animation(image_path: str, prompt: str, duration: int, output_path: str, progress_callback=None):
     """
-    Generates a video animation from a static image using AnimateDiff.
-
-    Args:
-        image_path (str): The path to the input image.
-        prompt (str): The camera motion prompt.
-        duration (int): The duration of the video in seconds.
-        output_path (str): The path to save the generated video.
-        progress_callback (function): A function to call with progress updates.
+    Generates a 240p vertical video (432x768) animation for TikTok using AnimateDiff.
     """
-    # Load the motion adapter and pipeline
+
+    # Load model and adapter with float16 precision to save VRAM
     adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
-    pipe = AnimateDiffPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", motion_adapter=adapter)
+    pipe = AnimateDiffPipeline.from_pretrained(
+        "../models/stable-diffusion-v1-5",
+        motion_adapter=adapter,
+        torch_dtype=torch.float16
+    )
     pipe.to("cuda")
+    pipe.enable_model_cpu_offload()  # Optional: offload unused parts to CPU
 
-    # Prepare the input image
+    # Resize input image to vertical 432x768 (TikTok ratio)
     input_image = Image.open(image_path).convert("RGB")
-    input_image = input_image.resize((512, 512)) # Resize for the model
+    input_image = input_image.resize((432, 768))  # vertical video format
 
-    # Calculate the number of frames based on duration (assuming 8 fps)
-    num_frames = duration * 8
+    num_frames = 24  # fixed number of frames
 
-    # Generate the animation
+    if progress_callback is None:
+        def default_callback(step: int, timestep: int, latents):
+            print(f"Step {step}, Timestep {timestep}")
+        progress_callback = default_callback
+
+    # Run the animation pipeline
     output = pipe(
         prompt=prompt,
         negative_prompt="bad quality, worse quality",
@@ -37,10 +40,11 @@ def generate_animation(image_path: str, prompt: str, duration: int, output_path:
         image=input_image,
         callback=progress_callback,
         callback_steps=1,
+        height=768,
+        width=432
     )
-    frames = output.frames[0]
 
-    # Export the frames to a video
+    frames = output.frames[0]
     export_to_video(frames, output_path, fps=8)
 
     return output_path
