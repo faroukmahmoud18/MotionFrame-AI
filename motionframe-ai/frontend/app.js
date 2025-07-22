@@ -31,7 +31,9 @@ document.getElementById('upload-form').addEventListener('submit', async (e) => {
         // 2. Start the SSE connection
         const prompt = formData.get('prompt');
         const duration = formData.get('duration');
-        const eventSource = new EventSource(`/api/generate-video-sse?image_filename=${imageFilename}&prompt=${prompt}&duration=${duration}`);
+        const url = `/api/generate-video-sse?image_filename=${imageFilename}&prompt=${prompt}&duration=${duration}`;
+        alert(`Connecting to: ${url}`);
+        const eventSource = new EventSource(url);
 
         eventSource.onmessage = (event) => {
             try {
